@@ -251,7 +251,7 @@ The next zone is hardcoded from the ACT RUSH route. If you're doing a different 
 
 Route by the **ACT RUSH** community. Built for the runners, the followers, the people who type `+` in chat and have no idea what that means yet.
 
-Special thanks to **@Nawied** — return the gear and vouch, exile.
+Special thanks to **@Nawied** — for providing hes rush route
 
 ---
 
