@@ -13,7 +13,7 @@
 **The only overlay your party leader will ever need.**
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue?style=flat-square&logo=python&logoColor=white)](https://python.org)
-[![Platform](https://img.shields.io/badge/Platform-Windows-0078d7?style=flat-square&logo=windows&logoColor=white)](https://github.com)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-0078d7?style=flat-square&logo=linux&logoColor=white)](https://github.com)
 [![Game](https://img.shields.io/badge/Game-Path%20of%20Exile%201-orange?style=flat-square)](https://www.pathofexile.com)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 [![Vibes](https://img.shields.io/badge/Vibes-Immaculate-gold?style=flat-square)](https://github.com)
@@ -81,7 +81,8 @@ Zero clicks. Zero alt-tabbing. Zero "wait where do I go" in party chat.
 | 🔄 **Reset** | `F6` wipes the timer, ready for the next runner |
 | 👻 **Transparent overlay** | Semi-transparent dark UI — never covers your game |
 | 🎯 **10 acts, 85+ zones** | Full route from Act 1 Coast to Act 10 Kitava |
-| 🚀 **Single `.exe`** | No Python, no installs — just run it |
+| 🐧 **Cross-platform** | Runs natively on both **Windows** and **Linux** |
+| 🚀 **Single binary** | No Python, no installs — just run it |
 
 ---
 
@@ -89,30 +90,64 @@ Zero clicks. Zero alt-tabbing. Zero "wait where do I go" in party chat.
 
 ### Option A — Just download and run (recommended)
 
+**Windows:**
 1. Grab the latest `poe_overlay.exe` from [**Releases**](../../releases)
 2. Double-click it
 3. Done. Seriously.
 
-> The overlay auto-detects `Client.txt` on startup for standard Steam and standalone PoE installs. If yours is somewhere unusual, click **Browse…** and point it at your `Client.txt`.
+**Linux:**
+1. Grab the latest `poe_overlay` binary from [**Releases**](../../releases)
+2. `chmod +x poe_overlay && ./poe_overlay`
+3. Done.
+
+> The overlay auto-detects `Client.txt` on startup for standard Steam, Flatpak, Lutris, and standalone PoE installs. If yours is somewhere unusual, click **Browse…** and point it at your `Client.txt`.
 
 ### Option B — Run from source
 
 ```bash
 git clone https://github.com/yourname/poe-act-rush-overlay
 cd poe-act-rush-overlay
-pip install -r requirements.txt
 python poe_overlay.py
 ```
 
-**Requirements:** Python 3.10+, tkinter (bundled with Python on Windows), nothing else.
+**Requirements:** Python 3.10+, tkinter — that's it, no third-party packages.
+
+> **Linux only:** if tkinter isn't installed: `sudo apt install python3-tk`
 
 ### Option C — Build it yourself
 
+**Windows:**
 ```bash
 pip install pyinstaller
 pyinstaller poe_overlay.spec
 # → dist/poe_overlay.exe
 ```
+
+**Linux:**
+```bash
+pip install pyinstaller
+pyinstaller poe_overlay.spec
+# → dist/poe_overlay  (ELF binary, ready to run)
+chmod +x dist/poe_overlay
+```
+
+---
+
+## 🐧 Linux — where is my `Client.txt`?
+
+The overlay checks all of these automatically on startup:
+
+| Setup | Path |
+|---|---|
+| Steam (native) | `~/.steam/steam/steamapps/common/Path of Exile/logs/Client.txt` |
+| Steam (native, alt) | `~/.local/share/Steam/steamapps/common/Path of Exile/logs/Client.txt` |
+| Steam (Flatpak) | `~/.var/app/com.valvesoftware.Steam/data/Steam/steamapps/common/Path of Exile/logs/Client.txt` |
+| Lutris / Wine | `~/Games/path-of-exile/drive_c/Program Files (x86)/Grinding Gear Games/Path of Exile/logs/Client.txt` |
+| Wine (default prefix) | `~/.wine/drive_c/Program Files (x86)/Grinding Gear Games/Path of Exile/logs/Client.txt` |
+
+Not found? Hit **Browse…** and select it manually.
+
+> **Note:** Transparency requires a compositor (KDE, GNOME, i3+picom, etc.). Without one the overlay runs fully opaque — everything else works fine.
 
 ---
 
@@ -209,7 +244,7 @@ No game memory reading. No injection. No hooks. Just a log file — the same way
 ```
 poe-act-rush-overlay/
 ├── poe_overlay.py      ← everything. one file. beautiful chaos.
-├── poe_overlay.spec    ← PyInstaller build config
+├── poe_overlay.spec    ← PyInstaller build config (Windows + Linux)
 ├── ACT_RUSH.txt        ← the sacred route document
 └── README.md           ← you are here
 ```
@@ -245,13 +280,19 @@ Absolutely. It works for any run following this route, party or solo.
 **Q: The "next zone" shown is wrong for my run.**
 The next zone is hardcoded from the ACT RUSH route. If you're doing a different route, open a PR or fork it.
 
+**Q: The overlay is not transparent on Linux — is it broken?**
+No. Transparency requires a compositor. Without one (e.g. bare Openbox, some tiling WMs) it runs fully opaque. All functionality works normally.
+
+**Q: Linux says `python3-tk` is missing — what do I do?**
+Run `sudo apt install python3-tk` (Debian/Ubuntu) or `sudo pacman -S tk` (Arch). Then rerun the script.
+
 ---
 
 ## ❤️ Credits
 
 Route by the **ACT RUSH** community. Built for the runners, the followers, the people who type `+` in chat and have no idea what that means yet.
 
-Special thanks to **@Nawied** — for providing hes rush route
+Special thanks to **@Nawied** — for providing his rush route.
 
 ---
 
