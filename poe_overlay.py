@@ -26,12 +26,11 @@ from pathlib import Path
 IS_WINDOWS = platform.system() == "Windows"
 IS_LINUX   = platform.system() == "Linux"
 
-# Font families — Segoe UI / Consolas are Windows-only; fall back gracefully
 def _font(preferred: str, fallback: str = "DejaVu Sans") -> str:
     return preferred if IS_WINDOWS else fallback
 
-UI_FONT   = _font("Segoe UI",  "Ubuntu")          # general UI text
-MONO_FONT = _font("Consolas",  "DejaVu Sans Mono") # timer digits
+UI_FONT   = _font("Segoe UI",  "Ubuntu")
+MONO_FONT = _font("Consolas",  "DejaVu Sans Mono")
 
 # ---------------------------------------------------------------------------
 # ROUTE DATA  — based on ACT_RUSH.txt
@@ -774,23 +773,28 @@ FINISH_ZONES = {"oriath", "karui shores"}
 # Default Client.txt locations — PoE 1 only
 # ---------------------------------------------------------------------------
 DEFAULT_LOG_PATHS = [
-    # ── Windows paths ───────────────────────────────────────────────────────
+    # Windows
     r"C:\Program Files (x86)\Grinding Gear Games\Path of Exile\logs\Client.txt",
     r"C:\Program Files\Grinding Gear Games\Path of Exile\logs\Client.txt",
     r"C:\Program Files (x86)\Steam\steamapps\common\Path of Exile\logs\Client.txt",
     r"C:\Program Files\Steam\steamapps\common\Path of Exile\logs\Client.txt",
     str(Path.home() / "Games" / "Path of Exile" / "logs" / "Client.txt"),
-    # ── Linux — native Steam (steamapps in home) ────────────────────────────
+    # Linux — Steam native
     str(Path.home() / ".steam" / "steam" / "steamapps" / "common" / "Path of Exile" / "logs" / "Client.txt"),
     str(Path.home() / ".local" / "share" / "Steam" / "steamapps" / "common" / "Path of Exile" / "logs" / "Client.txt"),
-    # ── Linux — Flatpak Steam ───────────────────────────────────────────────
+    # Linux — Flatpak Steam
     str(Path.home() / ".var" / "app" / "com.valvesoftware.Steam" / "data" / "Steam" / "steamapps" / "common" / "Path of Exile" / "logs" / "Client.txt"),
-    # ── Linux — Lutris / Wine prefix ────────────────────────────────────────
+    # Linux — Lutris / Wine
     str(Path.home() / "Games" / "path-of-exile" / "drive_c" / "Program Files (x86)" / "Grinding Gear Games" / "Path of Exile" / "logs" / "Client.txt"),
     str(Path.home() / ".wine" / "drive_c" / "Program Files (x86)" / "Grinding Gear Games" / "Path of Exile" / "logs" / "Client.txt"),
 ]
 
 ZONE_PATTERN = re.compile(r": You have entered (.+)\.")
+
+# ---------------------------------------------------------------------------
+# Layout
+# ---------------------------------------------------------------------------
+OVERLAY_WIDTH = 340
 
 # ---------------------------------------------------------------------------
 # Colour palette
@@ -822,6 +826,17 @@ TIMER_RUNNING = "running"
 TIMER_PAUSED  = "paused"
 TIMER_STOPPED = "stopped"
 
+# ---------------------------------------------------------------------------
+# Default keybinds
+# ---------------------------------------------------------------------------
+DEFAULT_KEYBINDS = {
+    "lock":   "F5",
+    "reset":  "F6",
+    "start":  "",
+    "stop":   "",
+    "pause":  "",
+}
+
 
 # ===========================================================================
 # OVERLAY APPLICATION
@@ -832,12 +847,12 @@ class PoEOverlay:
         self.root = root
         self.root.title("PoE Act Rush")
         self.root.overrideredirect(True)
-        self.root.configure(bg=BG_COLOR)
         self.root.wm_attributes("-topmost", True)
         try:
             self.root.wm_attributes("-alpha", BG_ALPHA)
         except tk.TclError:
-            pass  # no compositor on this Linux session — runs fully opaque
+            pass  # no compositor on Linux — runs fully opaque
+        self.root.configure(bg=BG_COLOR)
 
         self.log_path: str = ""
         self.locked: bool = False
@@ -848,8 +863,15 @@ class PoEOverlay:
         self.start_time: float = 0.0
         self.elapsed_frozen: float = 0.0
 
+        # Keybinds (mutable copy of defaults)
+        self.keybinds: dict[str, str] = dict(DEFAULT_KEYBINDS)
+
         self._drag_x = 0
         self._drag_y = 0
+        self._resize_start_x = 0
+        self._resize_start_y = 0
+        self._resize_start_w = 0
+        self._resize_start_h = 0
 
         self._build_ui()
 
@@ -865,15 +887,14 @@ class PoEOverlay:
 
         self._tick()
 
-        self.root.bind("<F5>", self._toggle_lock)
-        self.root.bind("<F6>", self._reset_timer)
+        self._rebind_hotkeys()
 
-        self.root.geometry("+20+20")
+        self.root.geometry(f"{OVERLAY_WIDTH}x480+20+20")
 
     # ── UI construction ───────────────────────────────────────────────────
 
     def _build_ui(self):
-        W = 340
+        W = OVERLAY_WIDTH
 
         outer = tk.Frame(self.root, bg=BORDER_COLOR)
         outer.pack(fill="both", expand=True, padx=1, pady=1)
@@ -902,11 +923,21 @@ class PoEOverlay:
             relief="flat", cursor="hand2", bd=0,
         ).pack(side="right", padx=6, pady=2)
 
-        tk.Label(
+        tk.Button(
+            header, text="⚙",
+            command=self._open_settings,
+            fg=DIM_COLOR, bg="#161412",
+            activeforeground=ACCENT_COLOR, activebackground="#161412",
+            font=(UI_FONT, 9),
+            relief="flat", cursor="hand2", bd=0,
+        ).pack(side="right", padx=2, pady=2)
+
+        self.hint_lbl = tk.Label(
             header, text="F5=lock  F6=reset",
             fg=DIM_COLOR, bg="#161412",
             font=(UI_FONT, 7),
-        ).pack(side="right", padx=4, pady=4)
+        )
+        self.hint_lbl.pack(side="right", padx=4, pady=4)
 
         header.bind("<ButtonPress-1>",   self._drag_start)
         header.bind("<B1-Motion>",       self._drag_motion)
@@ -918,7 +949,7 @@ class PoEOverlay:
         self.timer_lbl = tk.Label(
             timer_frame, text="00:00",
             fg=ACCENT_COLOR, bg=BG_COLOR,
-            font=(MONO_FONT, 26, "bold"),
+            font=(MONO_FONT, 20, "bold"),
         )
         self.timer_lbl.pack(side="left")
 
@@ -960,6 +991,17 @@ class PoEOverlay:
             state="disabled",
         )
         self.pause_btn.pack(side="left", fill="x", expand=True, padx=(4, 0))
+
+        self.reset_btn = tk.Button(
+            self.start_frame,
+            text="↺  RESET",
+            command=self._reset_timer,
+            bg="#1a1a2a", fg="#8888cc",
+            activebackground="#2a2a3a",
+            font=(UI_FONT, 9, "bold"),
+            relief="flat", cursor="hand2",
+        )
+        self.reset_btn.pack(side="left", fill="x", expand=True, padx=(4, 0))
 
         # Separator
         tk.Frame(inner, bg=BORDER_COLOR, height=1).pack(fill="x", padx=8, pady=4)
@@ -1036,7 +1078,18 @@ class PoEOverlay:
         )
         self.status_lbl.pack(side="left", padx=6, fill="x", expand=True)
 
-        self.root.minsize(W, 10)
+        # Resize grip — bottom-right corner
+        self.grip = tk.Label(
+            inner, text="⠿",
+            fg=DIM_COLOR, bg=BG_COLOR,
+            cursor="sizing" if IS_WINDOWS else "se_resize",
+            font=(UI_FONT, 10),
+        )
+        self.grip.pack(side="right", anchor="se", padx=2, pady=2)
+        self.grip.bind("<ButtonPress-1>",  self._resize_start)
+        self.grip.bind("<B1-Motion>",      self._resize_motion)
+
+        self.root.minsize(W, 380)
 
     # ── Drag ─────────────────────────────────────────────────────────────
 
@@ -1051,6 +1104,21 @@ class PoEOverlay:
             y = event.y_root - self._drag_y
             self.root.geometry(f"+{x}+{y}")
 
+    # ── Resize ───────────────────────────────────────────────────────────
+
+    def _resize_start(self, event):
+        self._resize_start_x = event.x_root
+        self._resize_start_y = event.y_root
+        self._resize_start_w = self.root.winfo_width()
+        self._resize_start_h = self.root.winfo_height()
+
+    def _resize_motion(self, event):
+        dw = event.x_root - self._resize_start_x
+        dh = event.y_root - self._resize_start_y
+        new_w = max(280, self._resize_start_w + dw)
+        new_h = max(300, self._resize_start_h + dh)
+        self.root.geometry(f"{new_w}x{new_h}")
+
     # ── Hotkeys ──────────────────────────────────────────────────────────
 
     def _toggle_lock(self, event=None):
@@ -1062,11 +1130,196 @@ class PoEOverlay:
         self.start_time = 0.0
         self.elapsed_frozen = 0.0
         self.timer_lbl.config(text="00:00", fg=ACCENT_COLOR)
+        self.start_frame.pack(fill="x", padx=8, pady=2)
         self.start_btn.config(text="▶  START", state="normal",
                               bg="#1e3a1e", fg="#5ec45e")
         self.stop_btn.config(state="disabled")
-        self.pause_btn.config(state="disabled", text="⏸  PAUSE", bg="#2a2a1e", fg="#c4b45e")
+        self.pause_btn.config(state="disabled", text="⏸  PAUSE",
+                              bg="#2a2a1e", fg="#c4b45e")
         self.finish_frame.pack_forget()
+        self._set_status("Ready — press START to begin")
+
+    # ── Hotkey rebinding ─────────────────────────────────────────────────
+
+    def _rebind_hotkeys(self):
+        """Unbind all previously-bound hotkeys and re-bind from self.keybinds."""
+        # Collect every key that was bound (current + defaults) to unbind safely
+        all_keys = set(DEFAULT_KEYBINDS.values()) | set(self.keybinds.values())
+        for k in all_keys:
+            if not k:
+                continue
+            seq = self._key_seq(k)
+            try:
+                self.root.unbind(seq)
+            except Exception:
+                pass
+
+        kb = self.keybinds
+        if kb.get("lock"):
+            self.root.bind(self._key_seq(kb["lock"]), self._toggle_lock)
+        if kb.get("reset"):
+            self.root.bind(self._key_seq(kb["reset"]), self._reset_timer)
+        if kb.get("start"):
+            self.root.bind(self._key_seq(kb["start"]), lambda e: self._start_timer())
+        if kb.get("stop"):
+            self.root.bind(self._key_seq(kb["stop"]), lambda e: self._stop_timer())
+        if kb.get("pause"):
+            self.root.bind(self._key_seq(kb["pause"]), lambda e: self._pause_timer())
+
+        self._update_hint_label()
+
+    @staticmethod
+    def _key_seq(keysym: str) -> str:
+        """Convert a bare keysym like 'F5' or 'r' to a Tk binding sequence '<F5>'."""
+        if not keysym:
+            return ""
+        if keysym.startswith("<") and keysym.endswith(">"):
+            return keysym
+        return f"<{keysym}>"
+
+    def _update_hint_label(self):
+        lock_k  = self.keybinds.get("lock",  "") or "—"
+        reset_k = self.keybinds.get("reset", "") or "—"
+        self.hint_lbl.config(text=f"{lock_k}=lock  {reset_k}=reset")
+
+    # ── Settings window ──────────────────────────────────────────────────
+
+    def _open_settings(self):
+        if hasattr(self, "_settings_win") and self._settings_win.winfo_exists():
+            self._settings_win.lift()
+            return
+
+        win = tk.Toplevel(self.root)
+        self._settings_win = win
+        win.title("Settings — PoE Act Rush")
+        win.configure(bg=BG_COLOR)
+        win.resizable(False, False)
+        win.wm_attributes("-topmost", True)
+        try:
+            win.wm_attributes("-alpha", 0.95)
+        except tk.TclError:
+            pass
+
+        # Header
+        hdr = tk.Frame(win, bg="#161412")
+        hdr.pack(fill="x")
+        tk.Label(
+            hdr, text="⚙  Keybind Settings",
+            fg=ACCENT_COLOR, bg="#161412",
+            font=(UI_FONT, 10, "bold"),
+        ).pack(side="left", padx=10, pady=6)
+
+        tk.Frame(win, bg=BORDER_COLOR, height=1).pack(fill="x")
+
+        # Info
+        tk.Label(
+            win,
+            text="Click a field and press a key to assign a hotkey.\nLeave empty to disable.",
+            fg=DIM_COLOR, bg=BG_COLOR,
+            font=(UI_FONT, 8), justify="left",
+        ).pack(anchor="w", padx=12, pady=(8, 4))
+
+        actions = [
+            ("lock",  "🔒 Lock / unlock window"),
+            ("reset", "↺  Reset timer"),
+            ("start", "▶  Start timer"),
+            ("stop",  "■  Stop timer"),
+            ("pause", "⏸  Pause / Resume"),
+        ]
+
+        entries: dict[str, tk.Entry] = {}
+        form = tk.Frame(win, bg=BG_COLOR)
+        form.pack(fill="x", padx=12, pady=4)
+
+        for row_i, (action, label) in enumerate(actions):
+            tk.Label(
+                form, text=label,
+                fg=TEXT_COLOR, bg=BG_COLOR,
+                font=(UI_FONT, 9), anchor="w", width=26,
+            ).grid(row=row_i, column=0, sticky="w", pady=3)
+
+            var = tk.StringVar(value=self.keybinds.get(action, ""))
+            ent = tk.Entry(
+                form, textvariable=var,
+                bg="#1a1a22", fg=ACCENT_COLOR,
+                insertbackground=ACCENT_COLOR,
+                font=(MONO_FONT, 9),
+                relief="flat", width=10,
+                readonlybackground="#1a1a22",
+            )
+            ent.grid(row=row_i, column=1, padx=(8, 0), pady=3, sticky="w")
+            entries[action] = ent
+
+            # Capture key press — intercept the raw keysym, filter out modifiers
+            def _on_key(event, v=var):
+                keysym = event.keysym
+                # Clear on Escape / Backspace / Delete
+                if keysym in ("Escape", "BackSpace", "Delete"):
+                    v.set("")
+                    return "break"
+                # Ignore lone modifier keys (cross-platform safe names)
+                if keysym in (
+                    "Shift_L", "Shift_R", "Control_L", "Control_R",
+                    "Alt_L", "Alt_R", "Meta_L", "Meta_R", "Super_L", "Super_R",
+                    "Caps_Lock", "Num_Lock", "Scroll_Lock", "ISO_Level3_Shift",
+                ):
+                    return "break"
+                v.set(keysym)
+                return "break"
+
+            ent.bind("<KeyPress>", _on_key)
+            ent.bind("<FocusIn>",  lambda ev, e=ent: e.config(bg="#22223a"))
+            ent.bind("<FocusOut>", lambda ev, e=ent: e.config(bg="#1a1a22"))
+
+        tk.Frame(win, bg=BORDER_COLOR, height=1).pack(fill="x", pady=(8, 0))
+
+        # Buttons row
+        btn_row = tk.Frame(win, bg=BG_COLOR)
+        btn_row.pack(fill="x", padx=12, pady=8)
+
+        def _save():
+            for action, ent in entries.items():
+                self.keybinds[action] = ent.get().strip()
+            self._rebind_hotkeys()
+            self._set_status("Keybinds saved.")
+            win.destroy()
+
+        def _restore():
+            for action, ent in entries.items():
+                ent.delete(0, "end")
+                ent.insert(0, DEFAULT_KEYBINDS.get(action, ""))
+
+        tk.Button(
+            btn_row, text="Save",
+            command=_save,
+            bg="#1e3a1e", fg="#5ec45e",
+            activebackground="#2a4a2a",
+            font=(UI_FONT, 9, "bold"),
+            relief="flat", cursor="hand2", width=10,
+        ).pack(side="left")
+
+        tk.Button(
+            btn_row, text="Restore defaults",
+            command=_restore,
+            bg="#2a2a1e", fg="#c4b45e",
+            activebackground="#3a3a2a",
+            font=(UI_FONT, 9),
+            relief="flat", cursor="hand2",
+        ).pack(side="left", padx=(6, 0))
+
+        tk.Button(
+            btn_row, text="Cancel",
+            command=win.destroy,
+            bg="#1a1a22", fg=DIM_COLOR,
+            activebackground="#2a2a32",
+            font=(UI_FONT, 9),
+            relief="flat", cursor="hand2",
+        ).pack(side="right")
+
+        # Position near overlay
+        x = self.root.winfo_x() + self.root.winfo_width() + 8
+        y = self.root.winfo_y()
+        win.geometry(f"+{x}+{y}")
 
     # ── Status bar ───────────────────────────────────────────────────────
 
