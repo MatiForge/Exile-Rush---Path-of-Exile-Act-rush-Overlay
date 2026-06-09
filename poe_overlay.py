@@ -16,7 +16,22 @@ import threading
 import time
 import os
 import re
+import sys
+import platform
 from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# Platform helpers
+# ---------------------------------------------------------------------------
+IS_WINDOWS = platform.system() == "Windows"
+IS_LINUX   = platform.system() == "Linux"
+
+# Font families — Segoe UI / Consolas are Windows-only; fall back gracefully
+def _font(preferred: str, fallback: str = "DejaVu Sans") -> str:
+    return preferred if IS_WINDOWS else fallback
+
+UI_FONT   = _font("Segoe UI",  "Ubuntu")          # general UI text
+MONO_FONT = _font("Consolas",  "DejaVu Sans Mono") # timer digits
 
 # ---------------------------------------------------------------------------
 # ROUTE DATA  — based on ACT_RUSH.txt
@@ -759,11 +774,20 @@ FINISH_ZONES = {"oriath", "karui shores"}
 # Default Client.txt locations — PoE 1 only
 # ---------------------------------------------------------------------------
 DEFAULT_LOG_PATHS = [
+    # ── Windows paths ───────────────────────────────────────────────────────
     r"C:\Program Files (x86)\Grinding Gear Games\Path of Exile\logs\Client.txt",
     r"C:\Program Files\Grinding Gear Games\Path of Exile\logs\Client.txt",
     r"C:\Program Files (x86)\Steam\steamapps\common\Path of Exile\logs\Client.txt",
     r"C:\Program Files\Steam\steamapps\common\Path of Exile\logs\Client.txt",
     str(Path.home() / "Games" / "Path of Exile" / "logs" / "Client.txt"),
+    # ── Linux — native Steam (steamapps in home) ────────────────────────────
+    str(Path.home() / ".steam" / "steam" / "steamapps" / "common" / "Path of Exile" / "logs" / "Client.txt"),
+    str(Path.home() / ".local" / "share" / "Steam" / "steamapps" / "common" / "Path of Exile" / "logs" / "Client.txt"),
+    # ── Linux — Flatpak Steam ───────────────────────────────────────────────
+    str(Path.home() / ".var" / "app" / "com.valvesoftware.Steam" / "data" / "Steam" / "steamapps" / "common" / "Path of Exile" / "logs" / "Client.txt"),
+    # ── Linux — Lutris / Wine prefix ────────────────────────────────────────
+    str(Path.home() / "Games" / "path-of-exile" / "drive_c" / "Program Files (x86)" / "Grinding Gear Games" / "Path of Exile" / "logs" / "Client.txt"),
+    str(Path.home() / ".wine" / "drive_c" / "Program Files (x86)" / "Grinding Gear Games" / "Path of Exile" / "logs" / "Client.txt"),
 ]
 
 ZONE_PATTERN = re.compile(r": You have entered (.+)\.")
@@ -808,9 +832,12 @@ class PoEOverlay:
         self.root = root
         self.root.title("PoE Act Rush")
         self.root.overrideredirect(True)
-        self.root.wm_attributes("-topmost", True)
-        self.root.wm_attributes("-alpha", BG_ALPHA)
         self.root.configure(bg=BG_COLOR)
+        self.root.wm_attributes("-topmost", True)
+        try:
+            self.root.wm_attributes("-alpha", BG_ALPHA)
+        except tk.TclError:
+            pass  # no compositor on this Linux session — runs fully opaque
 
         self.log_path: str = ""
         self.locked: bool = False
@@ -863,7 +890,7 @@ class PoEOverlay:
         tk.Label(
             header, text="⚔ PoE Act Rush",
             fg=ACCENT_COLOR, bg="#161412",
-            font=("Segoe UI", 9, "bold"),
+            font=(UI_FONT, 9, "bold"),
         ).pack(side="left", padx=8, pady=4)
 
         tk.Button(
@@ -871,14 +898,14 @@ class PoEOverlay:
             command=self.root.destroy,
             fg="#c45e5e", bg="#161412",
             activeforeground="#ff4444", activebackground="#161412",
-            font=("Segoe UI", 9, "bold"),
+            font=(UI_FONT, 9, "bold"),
             relief="flat", cursor="hand2", bd=0,
         ).pack(side="right", padx=6, pady=2)
 
         tk.Label(
             header, text="F5=lock  F6=reset",
             fg=DIM_COLOR, bg="#161412",
-            font=("Segoe UI", 7),
+            font=(UI_FONT, 7),
         ).pack(side="right", padx=4, pady=4)
 
         header.bind("<ButtonPress-1>",   self._drag_start)
@@ -891,7 +918,7 @@ class PoEOverlay:
         self.timer_lbl = tk.Label(
             timer_frame, text="00:00",
             fg=ACCENT_COLOR, bg=BG_COLOR,
-            font=("Consolas", 26, "bold"),
+            font=(MONO_FONT, 26, "bold"),
         )
         self.timer_lbl.pack(side="left")
 
@@ -905,7 +932,7 @@ class PoEOverlay:
             command=self._start_timer,
             bg="#1e3a1e", fg="#5ec45e",
             activebackground="#2a4a2a",
-            font=("Segoe UI", 9, "bold"),
+            font=(UI_FONT, 9, "bold"),
             relief="flat", cursor="hand2",
         )
         self.start_btn.pack(side="left", fill="x", expand=True)
@@ -916,7 +943,7 @@ class PoEOverlay:
             command=self._stop_timer,
             bg="#3a1e1e", fg="#c45e5e",
             activebackground="#4a2a2a",
-            font=("Segoe UI", 9, "bold"),
+            font=(UI_FONT, 9, "bold"),
             relief="flat", cursor="hand2",
             state="disabled",
         )
@@ -928,7 +955,7 @@ class PoEOverlay:
             command=self._pause_timer,
             bg="#2a2a1e", fg="#c4b45e",
             activebackground="#3a3a2a",
-            font=("Segoe UI", 9, "bold"),
+            font=(UI_FONT, 9, "bold"),
             relief="flat", cursor="hand2",
             state="disabled",
         )
@@ -941,14 +968,14 @@ class PoEOverlay:
         self.zone_lbl = tk.Label(
             inner, text="— waiting for zone —",
             fg=TEXT_COLOR, bg=BG_COLOR,
-            font=("Segoe UI", 10, "bold"), anchor="w", wraplength=320,
+            font=(UI_FONT, 10, "bold"), anchor="w", wraplength=320,
         )
         self.zone_lbl.pack(fill="x", padx=8)
 
         self.act_lbl = tk.Label(
             inner, text="",
             fg=DIM_COLOR, bg=BG_COLOR,
-            font=("Segoe UI", 8), anchor="w",
+            font=(UI_FONT, 8), anchor="w",
         )
         self.act_lbl.pack(fill="x", padx=8)
 
@@ -963,12 +990,12 @@ class PoEOverlay:
         tk.Label(
             self.next_frame, text="NEXT →",
             fg=DIM_COLOR, bg=BG_COLOR,
-            font=("Segoe UI", 7, "bold"),
+            font=(UI_FONT, 7, "bold"),
         ).pack(side="left")
         self.next_lbl = tk.Label(
             self.next_frame, text="",
             fg="#7ab8e8", bg=BG_COLOR,
-            font=("Segoe UI", 9, "bold"), anchor="w",
+            font=(UI_FONT, 9, "bold"), anchor="w",
         )
         self.next_lbl.pack(side="left", padx=(4, 0))
 
@@ -977,7 +1004,7 @@ class PoEOverlay:
         self.alert_lbl = tk.Label(
             inner, text="",
             fg=GREEN_COLOR, bg=BG_COLOR,
-            font=("Segoe UI", 9, "bold"), anchor="w", wraplength=320,
+            font=(UI_FONT, 9, "bold"), anchor="w", wraplength=320,
         )
         self.alert_lbl.pack(fill="x", padx=8, pady=(0, 4))
 
@@ -986,7 +1013,7 @@ class PoEOverlay:
         self.finish_lbl = tk.Label(
             self.finish_frame, text="",
             fg=GOLD_COLOR, bg="#1a1400",
-            font=("Segoe UI", 10, "bold"), wraplength=320,
+            font=(UI_FONT, 10, "bold"), wraplength=320,
         )
         self.finish_lbl.pack(fill="x", padx=8, pady=4)
 
@@ -999,13 +1026,13 @@ class PoEOverlay:
             command=self._browse_log,
             bg="#1a1a22", fg=DIM_COLOR,
             activebackground="#2a2a32",
-            font=("Segoe UI", 8), relief="flat", cursor="hand2",
+            font=(UI_FONT, 8), relief="flat", cursor="hand2",
         ).pack(side="left")
 
         self.status_lbl = tk.Label(
             bottom, text="Looking for Client.txt…",
             fg=DIM_COLOR, bg=BG_COLOR,
-            font=("Segoe UI", 7), anchor="w",
+            font=(UI_FONT, 7), anchor="w",
         )
         self.status_lbl.pack(side="left", padx=6, fill="x", expand=True)
 
@@ -1172,7 +1199,7 @@ class PoEOverlay:
                 lbl = tk.Label(
                     self.steps_frame, text=f"{prefix}{step}",
                     fg=color, bg=BG_COLOR,
-                    font=("Segoe UI", 9), anchor="w", wraplength=310, justify="left",
+                    font=(UI_FONT, 9), anchor="w", wraplength=310, justify="left",
                 )
                 lbl.pack(fill="x")
                 self.step_labels.append(lbl)
@@ -1200,7 +1227,7 @@ class PoEOverlay:
             self.step_labels.clear()
             u = tk.Label(
                 self.steps_frame, text="Zone not in route — free roam",
-                fg=DIM_COLOR, bg=BG_COLOR, font=("Segoe UI", 9, "italic"), anchor="w",
+                fg=DIM_COLOR, bg=BG_COLOR, font=(UI_FONT, 9, "italic"), anchor="w",
             )
             u.pack(fill="x")
             self.step_labels.append(u)
