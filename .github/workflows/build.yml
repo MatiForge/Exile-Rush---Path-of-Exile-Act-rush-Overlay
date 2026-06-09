@@ -1,0 +1,51 @@
+name: Build & Release
+
+on:
+  release:
+    types: [created]   
+
+jobs:
+
+  # ── Windows ──────────────────────────────────────────────────────────────
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+
+      - name: Build exe
+        run: pyinstaller poe_overlay.spec
+
+      - name: Upload exe to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/poe_overlay.exe
+
+  # ── Linux ─────────────────────────────────────────────────────────────────
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install tkinter + PyInstaller
+        run: |
+          sudo apt-get install -y python3-tk
+          pip install pyinstaller
+
+      - name: Build ELF binary
+        run: pyinstaller poe_overlay.spec
+
+      - name: Upload ELF to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/poe_overlay
